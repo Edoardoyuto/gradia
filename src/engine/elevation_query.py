@@ -1,45 +1,57 @@
-# src/engine/elevation_query.py
-import rasterio
+import requests
 
 class ElevationQuery:
-    def __init__(self, tif_path):
-        self.tif_path = tif_path
-        self.dataset = None
+    def __init__(self, mode="api", tif_path=None):
+        self.mode = mode
+        # 緯度経度を直接受け取れる公式の標高API
+        self.api_url = "https://cyberjapandata2.gsi.go.jp/general/dem/scripts/getelevation.php"
 
     def __enter__(self):
-        self.dataset = rasterio.open(self.tif_path)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.dataset:
-            self.dataset.close()
+        pass
 
     def get_elevation(self, lat, lon):
         """
-        指定した(lat, lon)の標高を返す。データがない場合はNone。
+        指定した(lat, lon)の標高を返す。
         """
-        if not self.dataset:
-            self.dataset = rasterio.open(self.tif_path)
-            
-        # rasterioのsampleメソッドは (longitude, latitude) の順
-        coords = [(lon, lat)]
+        params = {
+            "lat": round(lat, 6),
+            "lon": round(lon, 6),
+            "outtype": "JSON"
+        }
+        
         try:
-            for val in self.dataset.sample(coords):
-                elev = val[0]
-                # 国土地理院の無効値（-9999など）をチェック
-                return elev if elev > -100 else None
+            # 緯度経度をパラメータとして送信
+            response = requests.get(self.api_url, params=params, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                elevation = data.get("elevation")
+                
+                # 有効な数値であればfloatで返す
+                if elevation is not None and isinstance(elevation, (int, float)):
+                    return float(elevation)
+                elif isinstance(elevation, str) and elevation != "-----":
+                    return float(elevation)
+                return None
+            else:
+                print(f"API Error: Status code {response.status_code}")
+                return None
+                
         except Exception as e:
-            print(f"Sampling error at {lat}, {lon}: {e}")
+            print(f"API Connection error: {e}")
             return None
 
 if __name__ == "__main__":
-    # 単体テスト用（変換後のTIFがある前提）
-    TIF_PATH = "data/processed/local_elevation.tif"
-    try:
-        with ElevationQuery(TIF_PATH) as eq:
-            # 京田辺市近辺のダミー座標でテスト
-            test_lat, test_lon = 34.82, 135.77 
-            result = eq.get_elevation(test_lat, test_lon)
-            print(f"Elevation at ({test_lat}, {test_lon}): {result}m")
-    except Exception as e:
-        print("TIF file not found. Please run converter.py first.")
+    with ElevationQuery(mode="api") as eq:
+        # 同志社大学付近
+        test_lat, test_lon = 34.823, 135.770 
+        result = eq.get_elevation(test_lat, test_lon)
+        
+        print("--- Elevation API Test (Direct Endpoint) ---")
+        if result is not None:
+            print(f"Elevation: {result}m")
+        else:
+            print("Failed to retrieve data. Check connection.")

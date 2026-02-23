@@ -1,43 +1,54 @@
 import os
-import subprocess
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 from src.engine.elevation_query import ElevationQuery
 
 class ElevationManager:
     def __init__(self, base_dir="data"):
-        # プロジェクトルートからの相対パスを確実に扱う
         self.base_path = Path(base_dir)
-        self.raw_dir = self.base_path / "raw"
         self.processed_dir = self.base_path / "processed"
-        self.raw_dir.mkdir(parents=True, exist_ok=True)
         self.processed_dir.mkdir(parents=True, exist_ok=True)
-        
-        self.merged_tif = self.processed_dir / "merged_elevation.tif"
-
-    def update_geotiff(self):
-        """全てのXMLを結合して1つのGeoTIFFにする"""
-        xml_files = list(self.raw_dir.glob("*.xml"))
-        if not xml_files:
-            print("Error: No XML files found in data/raw/")
-            return False
-
-        vrt_path = self.processed_dir / "temp.vrt"
-        try:
-            # 1. 仮想ファイル(VRT)の構築
-            subprocess.run(["gdalbuildvrt", str(vrt_path)] + [str(f) for f in xml_files], check=True)
-            # 2. 実体(GeoTIFF)への変換
-            subprocess.run(["gdal_translate", str(vrt_path), str(self.merged_tif)], check=True)
-            print(f"Success: {self.merged_tif} generated.")
-            return True
-        except Exception as e:
-            print(f"GDAL Error: {e}")
-            return False
+        # キャッシュ用辞書
+        self.elevation_cache = {}
 
     def get_elevation(self, lat, lon):
-        """標高を取得する"""
-        if not self.merged_tif.exists():
-            if not self.update_geotiff():
-                return None
-            
-        with ElevationQuery(str(self.merged_tif)) as eq:
+        """単一地点の標高取得"""
+        with ElevationQuery(mode="api") as eq:
             return eq.get_elevation(lat, lon)
+
+    def enrich_nodes_with_elevation(self, G):
+        """
+        OSMnxで取得したグラフ(G)の全ノードに標高を高速に付与する。
+        並列処理（マルチスレッド）でAPIを叩くため、数千件でも数十秒で終わります。
+        """
+        nodes = list(G.nodes(data=True))
+        print(f"Enriching {len(nodes)} nodes with elevation data...")
+
+        def fetch_task(node_data):
+            node_id, data = node_data
+            # すでに標高があればスキップ
+            if 'elevation' in data: return
+            elev = self.get_elevation(data['y'], data['x'])
+            G.nodes[node_id]['elevation'] = elev
+
+        # 最大20スレッドで並列実行（速度とサーバー負荷のバランス）
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            executor.map(fetch_task, nodes)
+
+        print("Elevation enrichment complete.")
+        return G
+
+if __name__ == "__main__":
+    from src.engine.network_fetcher import NetworkFetcher
+    
+    # 1. 道路ネットワークの取得 (Step 2で作成したもの)
+    fetcher = NetworkFetcher()
+    G = fetcher.get_network(34.823, 135.770)
+    
+    # 2. 標高の自動付与
+    manager = ElevationManager()
+    G = manager.enrich_nodes_with_elevation(G)
+    
+    # 3. 結果確認
+    sample_node = list(G.nodes(data=True))[0]
+    print(f"\nSample Node Data: {sample_node}")
