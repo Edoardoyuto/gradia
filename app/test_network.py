@@ -2,7 +2,7 @@ import streamlit as st
 import osmnx as ox
 import folium
 from streamlit_folium import st_folium
-from network import get_walk_network
+from src.engine.route_manager import get_walk_network
 
 st.set_page_config(page_title="Network Test", layout="wide")
 st.title("🌐 道路ネットワーク取得テスト")

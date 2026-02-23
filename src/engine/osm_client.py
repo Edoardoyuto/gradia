@@ -2,7 +2,7 @@ import osmnx as ox
 import os
 from pathlib import Path
 
-class NetworkFetcher:
+class OSMClient: 
     def __init__(self, data_dir="data/networks"):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -19,7 +19,6 @@ class NetworkFetcher:
             return ox.load_graphml(filename)
         
         print(f"Downloading network from OSM (radius: {dist}m)...")
-        # network_type="walk" で歩行者道路（車椅子に最適）を取得
         G = ox.graph_from_point((lat, lon), dist=dist, network_type=network_type)
         
         # 保存
