@@ -3,65 +3,63 @@ import googlemaps
 from streamlit_geolocation import streamlit_geolocation
 from geopy.distance import geodesic
 
-def get_route_input():
+#こっちが本ちゃん
+def get_route_input(ui_box=st, key_prefix="main"):
     """
-    ユーザーから出発地・目的地の入力を受け取り、それぞれの(lat, lng)を返す関数。
-    直線距離の制約チェックも行う。
+    ユーザー入力を受け取るUI部品。
+    ui_box: 表示する場所 (st または st.sidebar)
+    key_prefix: エラーを防ぐための識別子
     """
     gmaps = googlemaps.Client(key=st.secrets["GOOGLE_MAPS_API_KEY"])
-    
-    start_coords = None
-    end_coords = None
-
-    st.sidebar.title("🗺️ 経路設定")
+    start_coords, end_coords = None, None
 
     # --- 1. 出発地点の設定 ---
-    st.sidebar.subheader("① 出発地点")
-    use_current = st.sidebar.checkbox("現在地を使用する")
-    
+    ui_box.markdown("### 🟢 出発地点")
+    use_current = ui_box.checkbox("現在地を使用する", key=f"{key_prefix}_current")
+
     if use_current:
+        # 現在地取得ボタン（高齢者にもわかりやすいように文字を添える）
+        ui_box.info("下のボタンを押して、位置情報を許可してください。")
         location = streamlit_geolocation()
         if location['latitude']:
             start_coords = (location['latitude'], location['longitude'])
-            st.sidebar.success("現在地をセットしました")
+            ui_box.success("✅ 現在地をセットしました")
     else:
-        start_input = st.sidebar.text_input("出発地を入力", placeholder="例：京都駅")
+        start_input = ui_box.text_input("出発地を入力してください", placeholder="例：京都駅", key=f"{key_prefix}_start")
         if start_input:
             res = gmaps.geocode(start_input)
             if res:
                 loc = res[0]['geometry']['location']
                 start_coords = (loc['lat'], loc['lng'])
 
+    ui_box.markdown("---") # 区切り線で視認性アップ
+
     # --- 2. 終着地点の設定 ---
-    st.sidebar.subheader("② 目的地")
-    end_input = st.sidebar.text_input("目的地を入力", placeholder="例：二条城")
+    ui_box.markdown("### 🔴 目的地")
+    end_input = ui_box.text_input("目的地を入力してください", placeholder="例：二条城", key=f"{key_prefix}_end")
     if end_input:
         res = gmaps.geocode(end_input)
         if res:
             loc = res[0]['geometry']['location']
             end_coords = (loc['lat'], loc['lng'])
 
-    # --- 3. 距離制限の設定 ---
-    st.sidebar.subheader("③ 移動制限")
-    max_dist = st.sidebar.slider("許容する最大直線距離 (km)", 0.5, 5.0, 2.0, step=0.1)
+    ui_box.markdown("---")
 
-    # --- 4. バリデーションと結果の返却 ---
+    # --- 3. 距離制限の設定 ---
+    ui_box.markdown("### 🚶‍♂️ 無理のない移動距離")
+    max_dist = ui_box.slider("何キロまでなら歩けそうですか？", 0.5, 5.0, 2.0, step=0.1, key=f"{key_prefix}_slider")
+
+    # --- 4. 判定とボタン ---
     if start_coords and end_coords:
-        # 直線距離を計算 (単位: km)
         dist = geodesic(start_coords, end_coords).km
-        
         if dist > max_dist:
-            st.sidebar.error(f"⚠️ 距離が遠すぎます！\n現在の直線距離: {dist:.2f}km\n設定上限: {max_dist}km")
+            ui_box.error(f"⚠️ 目的地が遠すぎます（直線距離: {dist:.2f}km）。上限を上げるか、別の場所を選んでください。")
             return None, None
         else:
-            st.sidebar.success(f"直線距離: {dist:.2f}km (許容範囲内)")
-            if st.sidebar.button("この条件で経路解析を開始"):
+            ui_box.success(f"直線距離: {dist:.2f}km（設定範囲内です！）")
+            
+            # 高齢者でも押しやすい大きなボタンにする
+            if ui_box.button("✨ この条件でバリアフリールートを探す ✨", use_container_width=True, type="primary", key=f"{key_prefix}_btn"):
                 return start_coords, end_coords
 
     return None, None
-
-# メイン処理での使い方
-# start_pos, end_pos = get_route_input()
-# if start_pos and end_pos:
-#     # ここから古田さんの解析エンジンへデータを渡す
-#     pass
