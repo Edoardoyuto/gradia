@@ -3,7 +3,7 @@ import osmnx as ox
 import networkx as nx
 import folium
 from streamlit_folium import st_folium
-from inputdemo import get_route_input
+from input import get_route_input
 
 st.set_page_config(page_title="Universal Topography", layout="wide")
 
