@@ -187,7 +187,7 @@ else:
             col1, col2 = st.columns(2)
 
             col1.metric(
-                "最短経路の最大傾斜",
+                "最短経路の\n最大傾斜",
                 f"{max_slope_s:.1f}%"
             )
 
@@ -195,7 +195,7 @@ else:
             delta_value = None if abs(diff) < 1e-6 else f"{diff:.1f}%"
 
             col2.metric(
-                "おすすめ経路の最大傾斜",
+                "おすすめ経路の\n最大傾斜",
                 f"{max_slope_r:.1f}%",
                 delta=delta_value,
                 delta_color="inverse"
