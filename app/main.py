@@ -34,9 +34,14 @@ def get_elevation_manager():
 @st.cache_data(show_spinner=False)
 def preprocess_graph(start_pos, end_pos):
     """道路網取得、標高付与、しんどさ計算の結果をキャッシュする"""
+    # 1. 道路ネットワーク取得
     G = get_walk_network(start_pos, end_pos)
+    
+    # 2. 標高付与（タイル方式）
     manager = get_elevation_manager()
     G = manager.enrich_nodes_with_elevation(G)
+    
+    # 3. 斜度としんどさ(effort)の計算
     calculator = GradeCalculator()
     G = calculator.add_effort_weights(G)
     return G
@@ -56,11 +61,12 @@ if "graph" not in st.session_state:
 # ==========================================
 
 if not st.session_state.analyzed:
-    # --- パターンA：入力画面 ---
+    # --- パターンA：最初の入力画面 ---
     st.title("🗺️ Universal Topography")
     st.markdown("### 誰もが安心して歩ける道をご案内します。")
     st.info("まずは出発地と目的地を教えてください。")
     
+    #
     start, end = get_route_input(ui_box=st, key_prefix="main")
     
     if start and end:
@@ -71,6 +77,7 @@ if not st.session_state.analyzed:
 else:
     # --- パターンB：解析結果画面 ---
     st.sidebar.title("🔍 条件を変更する")
+    # サイドバーからの再入力
     new_start, new_end = get_route_input(ui_box=st.sidebar, key_prefix="side")
     
     if new_start and new_end:
@@ -91,20 +98,22 @@ else:
     
     try:
         if st.session_state.graph is None:
-            with st.spinner("道路ネットワークと標高タイルを爆速解析中..."):
+            with st.spinner("地形と道路網を爆速解析中..."):
                 start_time = time.time()
+                # キャッシュを活かした前処理
                 G = preprocess_graph(start_pos, end_pos)
                 st.session_state.graph = G
                 elapsed = time.time() - start_time
-                st.success(f"🚀 解析完了 (処理時間: {elapsed:.2f}秒)")
+                st.success(f"🚀 全ての解析が完了しました！ (処理時間: {elapsed:.2f}秒)")
 
         G = st.session_state.graph
         
-        # --- ルート計算フェーズ (エッジベースの修正) ---
+        # --- ルート計算フェーズ (エッジベースの正確な特定) ---
+        #
         # 1. 出発地に一番近い「道(エッジ)」を探す
         nearest_edge_start = ox.distance.nearest_edges(G, start_pos[1], start_pos[0])
         u_start, v_start, key_start = nearest_edge_start
-        # 道の両端のうち、より近い方をノードとして採用
+        # 道の両端のノードのうち、より近い方を採用
         dist_u_start = geodesic((G.nodes[u_start]['y'], G.nodes[u_start]['x']), start_pos).meters
         dist_v_start = geodesic((G.nodes[v_start]['y'], G.nodes[v_start]['x']), start_pos).meters
         origin_node = u_start if dist_u_start < dist_v_start else v_start
@@ -116,35 +125,39 @@ else:
         dist_v_end = geodesic((G.nodes[v_end]['y'], G.nodes[v_end]['x']), end_pos).meters
         destination_node = u_end if dist_u_end < dist_v_end else v_end
 
-        # 経路探索
+        # ルート探索：おすすめ(effort) vs 最短(length)
         route = nx.shortest_path(G, origin_node, destination_node, weight='effort')
         shortest_route = nx.shortest_path(G, origin_node, destination_node, weight='length')
 
-        # --- 地図描画 ---
+        # --- 地図の描画 ---
         center_lat = (start_pos[0] + end_pos[0]) / 2
         center_lon = (start_pos[1] + end_pos[1]) / 2
         m = folium.Map(location=[center_lat, center_lon], zoom_start=15)
         
-        # 背景道路
+        # 背景道路（軽量化のためエッジのみ）
         edges = ox.graph_to_gdfs(G, nodes=False)
         folium.GeoJson(
             edges,
             style_function=lambda x: {'color': '#BBBBBB', 'weight': 1, 'opacity': 0.3}
         ).add_to(m)
 
-        # ルート表示
+        # 最短ルート（青点線）
         s_coords = [(G.nodes[node]['y'], G.nodes[node]['x']) for node in shortest_route]
-        folium.PolyLine(s_coords, color="#3498DB", weight=4, opacity=0.6, dash_array="5,5").add_to(m)
+        folium.PolyLine(s_coords, color="#3498DB", weight=4, opacity=0.6, dash_array="5,5", tooltip="最短ルート").add_to(m)
 
+        # バリアフリールート（赤太線）
         r_coords = [(G.nodes[node]['y'], G.nodes[node]['x']) for node in route]
-        folium.PolyLine(r_coords, color="#FF4B4B", weight=7, opacity=1.0).add_to(m)
+        folium.PolyLine(r_coords, color="#FF4B4B", weight=7, opacity=1.0, tooltip="おすすめバリアフリールート").add_to(m)
 
-        folium.Marker(start_pos, popup="出発地", icon=folium.Icon(color="green")).add_to(m)
-        folium.Marker(end_pos, popup="目的地", icon=folium.Icon(color="red")).add_to(m)
+        # マーカー
+        folium.Marker(start_pos, popup="START", icon=folium.Icon(color="green", icon="info-sign")).add_to(m)
+        folium.Marker(end_pos, popup="GOAL", icon=folium.Icon(color="red", icon="flag")).add_to(m)
+        
         st_folium(m, width=1000, height=600)
 
-        # レポート表示
+        # --- 比較レポート ---
         st.markdown("### 📊 ルート比較レポート")
+        #
         r_edges = ox.routing.route_to_gdf(G, route)
         s_edges = ox.routing.route_to_gdf(G, shortest_route)
         
