@@ -17,7 +17,7 @@ def get_walk_network(start_coords, end_coords):
     dist_m = geodesic(start_coords, end_coords).meters
     
     # 3. 取得する半径を決定（バッファ 500m を追加）
-    radius = (dist_m / 2) + 500
+    radius = (dist_m / 2) + 250
 
     # 4. OSMClientを使って取得（ここを NetworkFetcher から修正）
     client = OSMClient(data_dir="data/networks") 
