@@ -20,7 +20,7 @@ from src.engine.elevation_manager import ElevationManager
 from src.engine.grade_calculator import GradeCalculator
 
 # -----------------------
-# ページ設定
+# 1. ページ設定 (必ず最初に実行)
 # -----------------------
 st.set_page_config(
     page_title="Gradia",
@@ -29,72 +29,75 @@ st.set_page_config(
 )
 
 # -----------------------
-# CSS（スクロール削減版）
+# 2. Session State 初期化 (★CSSの前に記述することでエラーを回避)
 # -----------------------
+for key in ["analyzed", "start_pos", "end_pos", "graph", "route", "shortest_route"]:
+    if key not in st.session_state:
+        # analyzedはTrue/False、その他はNoneで初期化
+        st.session_state[key] = False if key == "analyzed" else None
+
 # -----------------------
-# CSS（見切れ解消＆極限タイト版）
+# 3. CSS定義 (動的レイアウト)
 # -----------------------
-st.markdown("""
+# 初期化が済んでいるので、ここでst.session_state.analyzedを参照してもエラーになりません
+max_width_value = "500px" if not st.session_state.analyzed else "100%"
+
+st.markdown(f"""
 <style>
-/* metricのラベルを折り返し可能にする */
-[data-testid="stMetricLabel"] > div {
-    white-space: normal !important;
-    line-height: 1.2 !important;
-    min-height: 2.4em; /* 2行分の高さを確保してガタつきを防ぐ */
-}
-/* 1. サイドバーの幅を固定 (例: 350px) */
-section[data-testid="stSidebar"] {
+/* 1. メインコンテナの動的制御 */
+.block-container {{
+    max-width: {max_width_value} !important;
+    padding-top: 2rem !important;
+    padding-bottom: 0rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    margin: 0 auto !important;
+}}
+
+/* 2. サイドバー固定幅 */
+section[data-testid="stSidebar"] {{
     min-width: 415px !important;
     max-width: 415px !important;
-}
-/* 1. 全体のパディングを最小化 */
-.block-container {
-    padding-top: 1rem !important; /* 見切れ防止のため少しだけ余裕を持たせる */
-    padding-bottom: 0rem !important;
-}
+}}
 
-/* タイトル(h2)の強制表示設定 */
-h2 {
-    margin-top: 2rem !important; /* マイナスを廃止して確実に出す */
-    margin-bottom: 0rem !important;
-    padding-top: 0rem !important;
-    line-height: 1.1 !important;
-    display: block !important;
-    color: #333 !important;
-}
-div[data-testid="stCheckbox"] {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%; /* 入力欄と高さを合わせる */
-    margin-top: 5px; /* 微調整 */
-}
-/* 全体のパディング微調整 */
-.block-container {
-    padding-top: 1.5rem !important; /* 1remだとブラウザによって見切れるため */
-}
-/* 3. キャプションと横線の隙間を詰める */
-.stCaption {
-    margin-top: -0.2rem !important;
-    margin-bottom: 0rem !important;
+/* 3. 要素間の隙間を極限までカット */
+[data-testid="stVerticalBlock"] > div {{
+    padding: 0px !important;
+    gap: 0.5rem !important;
+}}
+
+/* 4. 指標(Metric)のスタイル */
+[data-testid="stMetricLabel"] > div {{
+    white-space: normal !important;
     line-height: 1.2 !important;
-}
+    min-height: 2.4em;
+}}
+[data-testid="stMetricValue"] {{
+    font-size: 1.5rem !important;
+}}
+/* 3. Markdown要素内の段落(p)が持つデフォルトの余白を消す */
+.stMarkdown p {{
+    margin-bottom: 0px !important;
+}}
+/* 5. フォーム・テキスト周りの装飾 */
+h2 {{
+    margin-top: 0.5rem !important;
+    line-height: 1.1 !important;
+    color: #333 !important;
+    text-align: center;
+}}
 
-hr {
-    margin-top: 0.3rem !important;
-    margin-bottom: 0.5rem !important;
-}
-
-/* 5. サイドバーのStats表示をコンパクトに */
-[data-testid="stMetricValue"] {
-    font-size: 1.5rem !important; /* 数字を少し小さく */
-}
-.stMetric {
-    padding: 5px 10px !important;
-}
-
-/* 6. 背景設定（既存維持） */
-.stApp {
+.stCaption {{
+    margin-top: -0.5rem !important;
+    text-align: center;
+}}
+/* 2. 水平線 (hr) の上下余白を最小化 */
+hr {{
+    margin-top: 0rem !important;    /* 線の上側の隙間をゼロに */
+    margin-bottom: 0.5rem !important; /* 線の直後の入力欄との距離を微調整 */
+}}
+/* 6. 背景設定 */
+.stApp {{
     background-image: linear-gradient(
         to bottom, 
         rgba(255, 255, 255, 1) 0%, 
@@ -105,10 +108,21 @@ hr {
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
-}
-            
+}}
 
-            
+/* 7. 地図(iframe)の設定 */
+iframe {{
+    border: none !important;
+}}
+
+/* 8. チェックボックスの配置調整 */
+div[data-testid="stCheckbox"] {{
+    display: flex;
+    align-items: center;
+    height: 100%;
+    margin-top: 5px;
+}}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -129,18 +143,11 @@ def preprocess_graph(start_pos, end_pos):
     return G
 
 # -----------------------
-# Session State 初期化
-# -----------------------
-for key in ["analyzed", "start_pos", "end_pos", "graph", "route", "shortest_route"]:
-    if key not in st.session_state:
-        st.session_state[key] = None if key != "analyzed" else False
-
-# -----------------------
-# 入力画面
+# 入力画面 (未解析時)
 # -----------------------
 if not st.session_state.analyzed:
-
-    _, col_mid, _ = st.columns([1, 2, 1])
+    # 左右に空の列を作って中央に配置
+    _, col_mid, _ = st.columns([0.1, 0.8, 0.1])
 
     with col_mid:
         st.markdown("## Gradia")
@@ -159,12 +166,8 @@ if not st.session_state.analyzed:
 # 解析画面
 # -----------------------
 else:
-
-    # -------------------
-    # サイドバー
-    # -------------------
+    # --- サイドバー ---
     with st.sidebar:
-
         st.markdown("### Gradia")
         st.markdown("---")
 
@@ -178,39 +181,26 @@ else:
                 st.rerun()
 
         if st.session_state.route and st.session_state.shortest_route:
-
             G = st.session_state.graph
-            route = st.session_state.route
-            shortest_route = st.session_state.shortest_route
-
-            r_edges = ox.routing.route_to_gdf(G, route)
-            s_edges = ox.routing.route_to_gdf(G, shortest_route)
+            r_edges = ox.routing.route_to_gdf(G, st.session_state.route)
+            s_edges = ox.routing.route_to_gdf(G, st.session_state.shortest_route)
 
             max_slope_r = r_edges['slope'].max() * 100
             max_slope_s = s_edges['slope'].max() * 100
             diff = max_slope_r - max_slope_s
 
             col1, col2 = st.columns(2)
-
-            col1.metric(
-                "最短経路の最大傾斜",
-                f"{max_slope_s:.1f}%"
-            )
-
-            # diff が 0 のときは delta を None にする
+            col1.metric("最短経路の最大傾斜", f"{max_slope_s:.1f}%")
+            
             delta_value = None if abs(diff) < 1e-6 else f"{diff:.1f}%"
-
             col2.metric(
-                "おすすめ経路の最大傾斜",
-                f"{max_slope_r:.1f}%",
-                delta=delta_value,
+                "おすすめ経路の最大傾斜", 
+                f"{max_slope_r:.1f}%", 
+                delta=delta_value, 
                 delta_color="inverse"
             )
 
-
-    # -------------------
-    # メイン（地図のみ）
-    # -------------------
+    # --- メイン（地図表示） ---
     start_pos = st.session_state.start_pos
     end_pos = st.session_state.end_pos
 
@@ -238,47 +228,26 @@ else:
         st.session_state.route = route
         st.session_state.shortest_route = shortest_route
 
-        # 地図表示
+        # Folium 地図作成
         center_lat = (start_pos[0] + end_pos[0]) / 2
         center_lon = (start_pos[1] + end_pos[1]) / 2
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=15, tiles="cartodbpositron")
 
-        m = folium.Map(
-            location=[center_lat, center_lon],
-            zoom_start=15,
-            tiles="cartodbpositron"
-        )
-
+        # 経路の描画
         edges = ox.graph_to_gdfs(G, nodes=False)
-        folium.GeoJson(
-            edges,
-            style_function=lambda x: {
-                "color": "#DDDDDD",
-                "weight": 1,
-                "opacity": 0.5
-            }
-        ).add_to(m)
+        folium.GeoJson(edges, style_function=lambda x: {"color": "#DDDDDD", "weight": 1, "opacity": 0.5}).add_to(m)
 
         s_coords = [(G.nodes[n]['y'], G.nodes[n]['x']) for n in shortest_route]
-        folium.PolyLine(
-            s_coords,
-            color="#95a5a6",
-            weight=3,
-            opacity=0.5,
-            dash_array="10,10"
-        ).add_to(m)
+        folium.PolyLine(s_coords, color="#95a5a6", weight=3, opacity=0.5, dash_array="10,10").add_to(m)
 
         r_coords = [(G.nodes[n]['y'], G.nodes[n]['x']) for n in route]
-        folium.PolyLine(
-            r_coords,
-            color="#2ecc71",
-            weight=6,
-            opacity=0.8
-        ).add_to(m)
+        folium.PolyLine(r_coords, color="#2ecc71", weight=6, opacity=0.8).add_to(m)
 
         folium.Marker(start_pos, icon=folium.Icon(color="gray", icon="play")).add_to(m)
         folium.Marker(end_pos, icon=folium.Icon(color="black", icon="flag")).add_to(m)
 
-        st_folium(m, width="100%", height=560)
+        # 地図をコンテナ幅いっぱいに表示
+        st_folium(m, width=None, height=800, use_container_width=True)
 
     except Exception as e:
         st.error(f"Analysis Error: {e}")

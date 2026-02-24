@@ -43,7 +43,7 @@ def get_route_input(ui_box=st, key_prefix="main"):
             end_coords = (loc['lat'], loc['lng'])
 
     # --- 3. 距離制限 ---
-    ui_box.markdown("##### どれくらい歩けそうですか？")
+    ui_box.markdown("###### どれくらい歩けそうですか？")
     
     # 選択肢の定義
     dist_options = {
