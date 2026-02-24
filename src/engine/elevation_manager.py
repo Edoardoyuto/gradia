@@ -1,7 +1,13 @@
 import osmnx as ox
 from src.engine.elevation_downloader import ElevationDownloader
 
+# 高速なKumi Systemsのサーバーを使用
+ox.settings.overpass_url = "https://overpass.kumi.systems/api/interpreter"
+# タイムアウトによるエラーを防ぐ
+ox.settings.timeout = 180
+
 class ElevationManager:
+
     def __init__(self):
         # インスタンスを保持し、内部の tile_cache を活かす
         self.downloader = ElevationDownloader()
