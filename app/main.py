@@ -36,6 +36,11 @@ st.set_page_config(
 # -----------------------
 st.markdown("""
 <style>
+/* 1. サイドバーの幅を固定 (例: 350px) */
+section[data-testid="stSidebar"] {
+    min-width: 350px !important;
+    max-width: 350px !important;
+}
 /* 1. 全体のパディングを最小化 */
 .block-container {
     padding-top: 1rem !important; /* 見切れ防止のため少しだけ余裕を持たせる */
