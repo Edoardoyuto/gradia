@@ -5,6 +5,7 @@ import osmnx as ox
 import networkx as nx
 import sys
 import os
+import time  # 速度計測用
 
 # --- パスの問題を解決するロジック ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -39,6 +40,7 @@ if not st.session_state.analyzed:
     st.markdown("### 誰もが安心して歩ける道をご案内します。")
     st.info("まずは出発地と目的地を教えてください。")
     
+    #
     start, end = get_route_input(ui_box=st, key_prefix="main")
     
     if start and end:
@@ -47,6 +49,7 @@ if not st.session_state.analyzed:
         st.session_state.analyzed = True
         st.rerun() 
 else:
+    # --- サイドバー：条件変更 ---
     st.sidebar.title("🔍 条件を変更する")
     new_start, new_end = get_route_input(ui_box=st.sidebar, key_prefix="side")
     
@@ -68,16 +71,28 @@ else:
     
     try:
         if st.session_state.graph is None:
-            with st.spinner("道路ネットワークと標高、移動負荷を解析中..."):
-                G = get_walk_network(start_pos, end_pos) #
-                G = ElevationManager().enrich_nodes_with_elevation(G) #
-                G = GradeCalculator().add_effort_weights(G) #
+            with st.spinner("道路ネットワークと標高タイルを爆速解析中..."):
+                start_time = time.time()  # 計測開始
+                
+                # 1. 道路ネットワーク取得
+                G = get_walk_network(start_pos, end_pos) 
+                
+                # 2. 標高付与（タイル方式）
+                manager = ElevationManager()
+                G = manager.enrich_nodes_with_elevation(G) 
+                
+                # 3. 斜度としんどさ(effort)の計算
+                calculator = GradeCalculator()
+                G = calculator.add_effort_weights(G) 
+                
+                elapsed_time = time.time() - start_time  # 計測終了
                 st.session_state.graph = G
-                st.success("全ての解析が完了しました！")
+                st.success(f"🚀 全ての解析が完了しました！ (解析時間: {elapsed_time:.2f}秒)")
 
         # --- ルート計算フェーズ ---
         G = st.session_state.graph
-        origin_node = ox.distance.nearest_nodes(G, start_pos[1], start_pos[0]) #
+        #
+        origin_node = ox.distance.nearest_nodes(G, start_pos[1], start_pos[0]) 
         destination_node = ox.distance.nearest_nodes(G, end_pos[1], end_pos[0])
 
         route = None        # バリアフリー用
@@ -96,7 +111,8 @@ else:
         center_lon = (start_pos[1] + end_pos[1]) / 2
         m = folium.Map(location=[center_lat, center_lon], zoom_start=15)
         
-        nodes, edges = ox.graph_to_gdfs(G) #
+        #
+        nodes, edges = ox.graph_to_gdfs(G) 
 
         # 背景道路の描画
         def get_color(slope):
@@ -134,24 +150,24 @@ else:
 
         # --- データ分析レポート ---
         if route and shortest_route:
-
-            r_edges = ox.routing.route_to_gdf(G, route) #
+            st.markdown("### 📊 データ分析：ルート比較レポート")
+            #
+            r_edges = ox.routing.route_to_gdf(G, route) 
             s_edges = ox.routing.route_to_gdf(G, shortest_route)
             
-            # 指標の計算
             max_slope_r = r_edges['slope'].max() * 100
             max_slope_s = s_edges['slope'].max() * 100
             dist_r = r_edges['length'].sum() / 1000
             dist_s = s_edges['length'].sum() / 1000
 
             col1, col2, col3 = st.columns(3)
-            col1.metric("おすすめルート距離", f"{dist_r:.2f} km")
+            col1.metric("おすすめ距離", f"{dist_r:.2f} km")
             col2.metric("おすすめ最大斜度", f"{max_slope_r:.1f} %")
             col3.metric("最短ルート最大斜度", f"{max_slope_s:.1f} %", 
                         delta=f"{max_slope_r - max_slope_s:.1f} %", delta_color="inverse")
 
-            if max_slope_s > 8 and max_slope_r <= 8:
-                st.success(f"💡 分析結果：最短ルートには車椅子では危険な坂（{max_slope_s:.1f}%）が含まれますが、おすすめルートは安全圏内に抑えられています。")
+            if max_slope_s > 8:
+                st.warning(f"⚠️ 最短ルートには {max_slope_s:.1f}% の急坂が含まれています。車椅子や足腰への負担が大きいため、赤色のルートをお勧めします。")
 
     except Exception as e:
         st.error(f"解析中にエラーが発生しました: {e}")
