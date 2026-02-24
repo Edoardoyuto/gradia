@@ -5,6 +5,8 @@ import folium
 from streamlit_folium import st_folium
 import osmnx as ox
 import networkx as nx
+import sys
+import os
 
 # main.py の場所を基準に、プロジェクトのルート（gradia/）を検索パスに追加します
 current_dir = os.path.dirname(os.path.abspath(__file__)) # app フォルダ
