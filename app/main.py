@@ -1,8 +1,16 @@
+
+
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
 import osmnx as ox
 import networkx as nx
+
+# main.py の場所を基準に、プロジェクトのルート（gradia/）を検索パスに追加します
+current_dir = os.path.dirname(os.path.abspath(__file__)) # app フォルダ
+project_root = os.path.join(current_dir, "..")          # gradia フォルダ
+sys.path.append(project_root)
+
 
 # 自作エンジンのインポート
 from input import get_route_input
