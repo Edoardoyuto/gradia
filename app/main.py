@@ -5,7 +5,7 @@ import osmnx as ox
 import networkx as nx
 
 # 自作エンジンのインポート
-from app.input import get_route_input
+from input import get_route_input
 from src.engine.route_manager import get_walk_network
 from src.engine.elevation_manager import ElevationManager
 from src.engine.grade_calculator import GradeCalculator
