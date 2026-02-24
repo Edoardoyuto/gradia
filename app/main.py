@@ -44,8 +44,8 @@ st.markdown("""
 }
 /* 1. サイドバーの幅を固定 (例: 350px) */
 section[data-testid="stSidebar"] {
-    min-width: 400px !important;
-    max-width: 400px !important;
+    min-width: 415px !important;
+    max-width: 415px !important;
 }
 /* 1. 全体のパディングを最小化 */
 .block-container {
