@@ -22,112 +22,129 @@ from src.engine.grade_calculator import GradeCalculator
 st.set_page_config(page_title="Universal Topography", layout="wide")
 
 # ==========================================
-# キャッシュ管理：ここが高速化の核心
+# キャッシュ管理：爆速化の核心
 # ==========================================
 
 @st.cache_resource
 def get_elevation_manager():
-    """
-    ElevationManagerのインスタンスを保持。
-    これにより内部の tile_cache (PNGデータ) がセッションを越えて維持される。
-    """
+    """ElevationManagerのインスタンスを保持し、タイルキャッシュを維持する"""
     return ElevationManager()
 
 @st.cache_data(show_spinner=False)
 def preprocess_graph(start_pos, end_pos):
-    """
-    道路網取得、標高付与、しんどさ計算までを一括で行い、結果をキャッシュする。
-    """
-    # 1. 道路ネットワーク取得
+    """道路網取得、標高付与、しんどさ計算の結果をキャッシュする"""
     G = get_walk_network(start_pos, end_pos)
-
-    # 2. 標高付与（タイルキャッシュを保持するマネージャーを使用）
     manager = get_elevation_manager()
-    G = manager.enrich_nodes_with_elevation(G)
-
-    # 3. 斜度としんどさ(effort)の計算
+    G = manager.enrich_nodes_with_elevation(G) 
     calculator = GradeCalculator()
     G = calculator.add_effort_weights(G)
-
     return G
 
+# --- セッション状態の初期化 ---
+if "analyzed" not in st.session_state:
+    st.session_state.analyzed = False
+if "start_pos" not in st.session_state:
+    st.session_state.start_pos = None
+if "end_pos" not in st.session_state:
+    st.session_state.end_pos = None
+if "graph" not in st.session_state:
+    st.session_state.graph = None
+
 # ==========================================
-# メイン画面
+# 画面遷移のコントロール（元の方式）
 # ==========================================
 
-st.title("🗺️ Universal Topography")
+if not st.session_state.analyzed:
+    # ----------------------------------------
+    # パターンA：最初の入力画面
+    # ----------------------------------------
+    st.title("🗺️ Universal Topography")
+    st.markdown("### 誰もが安心して歩ける道をご案内します。")
+    st.info("まずは出発地と目的地を教えてください。")
+    
+    start, end = get_route_input(ui_box=st, key_prefix="main")
+    
+    if start and end:
+        st.session_state.start_pos = start
+        st.session_state.end_pos = end
+        st.session_state.analyzed = True
+        st.rerun() 
+else:
+    # ----------------------------------------
+    # パターンB：解析結果画面
+    # ----------------------------------------
+    st.sidebar.title("🔍 条件を変更する")
+    new_start, new_end = get_route_input(ui_box=st.sidebar, key_prefix="side")
+    
+    if new_start and new_end:
+        if (new_start != st.session_state.start_pos) or (new_end != st.session_state.end_pos):
+            st.session_state.start_pos = new_start
+            st.session_state.end_pos = new_end
+            st.session_state.graph = None
+            st.rerun()
+        
+    if st.sidebar.button("🏠 最初の画面に戻る", use_container_width=True):
+        st.session_state.analyzed = False
+        st.session_state.graph = None
+        st.rerun()
 
-# 入力UIの呼び出し
-start, end = get_route_input(ui_box=st)
-
-if start and end:
+    st.title("✅ バリアフリー経路の解析結果")
+    start_pos = st.session_state.start_pos
+    end_pos = st.session_state.end_pos
+    
     try:
-        # --- 高速解析フェーズ ---
-        with st.spinner("地形と道路網を爆速解析中..."):
-            start_time = time.time()
-            # キャッシュが効くため、同じ地点なら一瞬で終わる
-            G = preprocess_graph(start, end)
-            elapsed = time.time() - start_time
-            st.success(f"🚀 解析完了（処理時間: {elapsed:.2f}秒）")
+        if st.session_state.graph is None:
+            with st.spinner("道路ネットワークと標高タイルを爆速解析中..."):
+                start_time = time.time()
+                # キャッシュを活かした一括前処理
+                G = preprocess_graph(start_pos, end_pos)
+                st.session_state.graph = G
+                elapsed = time.time() - start_time
+                st.success(f"🚀 全ての解析が完了しました！ (処理時間: {elapsed:.2f}秒)")
 
-        # --- ルート探索 ---
-        # 出発地と目的地に最も近いノードを特定
-        origin_node = ox.distance.nearest_nodes(G, start[1], start[0])
-        destination_node = ox.distance.nearest_nodes(G, end[1], end[0])
+        G = st.session_state.graph
+        
+        # 最寄りのノード特定
+        origin_node = ox.distance.nearest_nodes(G, start_pos[1], start_pos[0])
+        destination_node = ox.distance.nearest_nodes(G, end_pos[1], end_pos[0])
 
-        # ダイクストラ法による経路探索
-        # おすすめルート（effortを重みに使用）
+        # ルート探索
         route = nx.shortest_path(G, origin_node, destination_node, weight='effort')
-        # 最短ルート（距離を重みに使用）
         shortest_route = nx.shortest_path(G, origin_node, destination_node, weight='length')
 
-        # --- 地図の描画 ---
-        center_lat = (start[0] + end[0]) / 2
-        center_lon = (start[1] + end[1]) / 2
+        # 地図描画
+        center_lat = (start_pos[0] + end_pos[0]) / 2
+        center_lon = (start_pos[1] + end_pos[1]) / 2
         m = folium.Map(location=[center_lat, center_lon], zoom_start=15)
-
-        # 道路ネットワークの背景描画（ノードは除外して軽くする）
+        
+        # 背景道路（ノードなしで軽量化）
         edges = ox.graph_to_gdfs(G, nodes=False)
         folium.GeoJson(
             edges,
-            style_function=lambda x: {
-                'color': '#BBBBBB',
-                'weight': 1,
-                'opacity': 0.3
-            }
+            style_function=lambda x: {'color': '#BBBBBB', 'weight': 1, 'opacity': 0.3}
         ).add_to(m)
 
-        # 1. 最短ルート（点線）
+        # 最短ルート（青点線）
         s_coords = [(G.nodes[node]['y'], G.nodes[node]['x']) for node in shortest_route]
-        folium.PolyLine(
-            s_coords, color="#3498DB", weight=4, opacity=0.6, 
-            dash_array="5,5", tooltip="最短ルート（坂道考慮なし）"
-        ).add_to(m)
+        folium.PolyLine(s_coords, color="#3498DB", weight=4, opacity=0.6, dash_array="5,5").add_to(m)
 
-        # 2. バリアフリールート（赤太線）
+        # バリアフリールート（赤太線）
         r_coords = [(G.nodes[node]['y'], G.nodes[node]['x']) for node in route]
-        folium.PolyLine(
-            r_coords, color="#FF4B4B", weight=7, opacity=1.0,
-            tooltip="おすすめバリアフリールート"
-        ).add_to(m)
+        folium.PolyLine(r_coords, color="#FF4B4B", weight=7, opacity=1.0).add_to(m)
 
-        # マーカー設定
-        folium.Marker(start, popup="出発地", icon=folium.Icon(color="green", icon="info-sign")).add_to(m)
-        folium.Marker(end, popup="目的地", icon=folium.Icon(color="red", icon="flag")).add_to(m)
-
-        # 地図表示
+        folium.Marker(start_pos, popup="START", icon=folium.Icon(color="green")).add_to(m)
+        folium.Marker(end_pos, popup="GOAL", icon=folium.Icon(color="red")).add_to(m)
         st_folium(m, width=1000, height=600)
 
-        # --- 比較レポートの表示 ---
-        st.markdown("### 📊 ルート比較")
+        # 比較レポート
+        st.markdown("### 📊 ルート比較レポート")
         r_edges = ox.routing.route_to_gdf(G, route)
         s_edges = ox.routing.route_to_gdf(G, shortest_route)
         
         col1, col2 = st.columns(2)
-        col1.metric("おすすめの最大斜度", f"{r_edges['slope'].max()*100:.1f} %")
-        col2.metric("最短ルートの最大斜度", f"{s_edges['slope'].max()*100:.1f} %", 
+        col1.metric("おすすめ最大斜度", f"{r_edges['slope'].max()*100:.1f} %")
+        col2.metric("最短ルート最大斜度", f"{s_edges['slope'].max()*100:.1f} %", 
                     delta=f"{(r_edges['slope'].max() - s_edges['slope'].max())*100:.1f} %", delta_color="inverse")
 
     except Exception as e:
-        st.error(f"解析中にエラーが発生しました。範囲を広げるか、別の地点をお試しください。")
-        st.info(f"詳細エラー: {e}")
+        st.error(f"解析中にエラーが発生しました: {e}")
