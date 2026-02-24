@@ -51,7 +51,13 @@ h2 {
     display: block !important;
     color: #333 !important;
 }
-
+div[data-testid="stCheckbox"] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%; /* 入力欄と高さを合わせる */
+    margin-top: 5px; /* 微調整 */
+}
 /* 全体のパディング微調整 */
 .block-container {
     padding-top: 1.5rem !important; /* 1remだとブラウザによって見切れるため */
