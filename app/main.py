@@ -7,6 +7,11 @@ import sys
 import os
 from geopy.distance import geodesic
 
+
+
+
+ox.settings.overpass_endpoint = "https://overpass.kumi.systems/api/interpreter"
+
 # -----------------------
 # パス設定
 # -----------------------
@@ -177,7 +182,8 @@ else:
             if (new_start != st.session_state.start_pos) or (new_end != st.session_state.end_pos):
                 st.session_state.start_pos = new_start
                 st.session_state.end_pos = new_end
-                st.session_state.graph = None
+                st.session_state.graph = None # ここでグラフを消している
+                st.session_state.route = None # 【追加】ルートも一緒に消すべき
                 st.rerun()
 
         if st.session_state.route and st.session_state.shortest_route:
